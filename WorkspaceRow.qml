@@ -14,7 +14,7 @@ Column {
   property string focusSection: "style"
   property int cursorColumn: 0
   property int templateCursorIndex: 0
-  readonly property bool dropdownOpen: autoLaunchDropdown.popupOpen
+  readonly property bool dropdownOpen: autoLaunchDropdown.popupOpen || iconDropdown.popupOpen
   readonly property bool editingText: nameField.activeFocus
   signal pickerRequested()
   signal navigationFocusRequested()
@@ -31,28 +31,36 @@ Column {
     root.templateCursorIndex = 0
   }
   function templateCount() { return root.host.templatesFor(root.targetKey).length }
+  // Cursor rows run top to bottom: style, name, new layout, auto-launch, one
+  // row per layout card, then the workspace icon's Windows/Custom row and its picker.
+  function navRows() {
+    var rows = ["style", "icon-mode", "icon-pick", "name", "new-layout", "auto-launch"]
+    for (var i = 0; i < root.templateCount(); i++) rows.push("template:" + i)
+    return rows
+  }
   function verticalIndex() {
-    if (root.focusSection === "style") return 0
-    if (root.focusSection === "name") return 1
-    if (root.focusSection === "new-layout") return 2
-    if (root.focusSection === "auto-launch") return 3
-    return 4 + Math.max(0, root.templateCursorIndex)
+    var key = root.focusSection === "template" ? "template:" + root.templateCursorIndex : root.focusSection
+    return Math.max(0, root.navRows().indexOf(key))
   }
   function setVerticalIndex(index) {
-    var max = 3 + root.templateCount()
-    index = Math.max(0, Math.min(max, index))
+    var rows = root.navRows()
+    index = Math.max(0, Math.min(rows.length - 1, index))
     root.cursorColumn = 0
-    if (index === 0) root.focusSection = "style"
-    else if (index === 1) root.focusSection = "name"
-    else if (index === 2) root.focusSection = "new-layout"
-    else if (index === 3) root.focusSection = "auto-launch"
-    else { root.focusSection = "template"; root.templateCursorIndex = index - 4 }
+    var key = rows[index]
+    if (key.indexOf("template:") === 0) {
+      root.focusSection = "template"
+      root.templateCursorIndex = Number(key.slice("template:".length))
+    } else {
+      root.focusSection = key
+    }
   }
   function cursorItem() {
     if (root.focusSection === "style") return styleSelector.cursorItem(root.cursorColumn)
     if (root.focusSection === "name") return root.cursorColumn === 0 ? nameFrame : swatchFrame
     if (root.focusSection === "new-layout") return addLayoutButton
     if (root.focusSection === "auto-launch") return autoLaunchDropdown
+    if (root.focusSection === "icon-mode") return root.cursorColumn === 0 ? windowsIconButton : customIconButton
+    if (root.focusSection === "icon-pick") return iconDropdown
     var card = templateRepeater.itemAt(root.templateCursorIndex)
     return card ? card.actionItem(root.cursorColumn) : null
   }
@@ -72,7 +80,7 @@ Column {
     if (dy !== 0) root.setVerticalIndex(root.verticalIndex() + dy)
     else if (dx !== 0) {
       var maxColumn = root.focusSection === "style" ? 2
-        : (root.focusSection === "name" ? 1 : (root.focusSection === "template" ? 2 : 0))
+        : (root.focusSection === "name" || root.focusSection === "icon-mode" ? 1 : (root.focusSection === "template" ? 2 : 0))
       root.cursorColumn = Math.max(0, Math.min(maxColumn, root.cursorColumn + dx))
     }
     Qt.callLater(root.revealCursor)
@@ -88,11 +96,21 @@ Column {
     else if (root.focusSection === "template") {
       var card = templateRepeater.itemAt(root.templateCursorIndex)
       if (card) card.activateAction(root.cursorColumn)
+    } else if (root.focusSection === "icon-mode") {
+      if (root.cursorColumn === 0) windowsIconButton.clicked()
+      else customIconButton.clicked()
+    } else if (root.focusSection === "icon-pick") {
+      if (iconDropdown.enabled) iconDropdown.toggle()
     }
   }
-  function moveDropdownCursor(delta) { autoLaunchDropdown.moveCursor(delta) }
-  function activateDropdownCursor() { autoLaunchDropdown.activateCursor() }
-  function closeDropdown() { autoLaunchDropdown.close() }
+  // Whichever picker is open owns the arrow keys and Enter.
+  function openDropdown() {
+    if (autoLaunchDropdown.popupOpen) return autoLaunchDropdown
+    return iconDropdown.popupOpen ? iconDropdown : null
+  }
+  function moveDropdownCursor(delta) { if (root.openDropdown()) root.openDropdown().moveCursor(delta) }
+  function activateDropdownCursor() { if (root.openDropdown()) root.openDropdown().activateCursor() }
+  function closeDropdown() { if (root.openDropdown()) root.openDropdown().close() }
   function autoLaunchOptions() {
     var options = [{ value: "", label: "Off" }]
     var templates = root.host.templatesFor(root.targetKey)
@@ -130,6 +148,58 @@ Column {
       onSelected: function(value) { root.host.setStyle(root.targetKey, value) }
       onHovered: function(index, hovered) { if (hovered) root.setCursor("style", index) }
     }
+  }
+  // Windows: each window on this workspace shows its own icon.
+  // Custom: this workspace shows the icon picked below instead.
+  PanelSectionHeader {
+    text: "WORKSPACE ICON"
+    foreground: root.host.bar ? root.host.bar.foreground : Color.foreground
+    fontFamily: root.host.bar ? root.host.bar.fontFamily : Style.font.family
+  }
+  Row {
+    id: iconModeRow
+    readonly property bool custom: root.host.iconKeyFor(root.targetKey) !== ""
+    width: parent.width
+    height: Style.space(36)
+    spacing: Style.space(6)
+    Button {
+      id: windowsIconButton
+      width: (iconModeRow.width - iconModeRow.spacing) / 2
+      height: iconModeRow.height
+      text: "Windows"
+      selected: !iconModeRow.custom
+      fontFamily: root.host.bar ? root.host.bar.fontFamily : Style.font.family
+      fontSize: Style.font.caption
+      hasCursor: root.cursorActive && root.focusSection === "icon-mode" && root.cursorColumn === 0
+      onHovered: function(hovered) { if (hovered) root.setCursor("icon-mode", 0) }
+      onClicked: root.host.setIcon(root.targetKey, "")
+    }
+    Button {
+      id: customIconButton
+      width: (iconModeRow.width - iconModeRow.spacing) / 2
+      height: iconModeRow.height
+      text: "Custom"
+      selected: iconModeRow.custom
+      fontFamily: root.host.bar ? root.host.bar.fontFamily : Style.font.family
+      fontSize: Style.font.caption
+      hasCursor: root.cursorActive && root.focusSection === "icon-mode" && root.cursorColumn === 1
+      onHovered: function(hovered) { if (hovered) root.setCursor("icon-mode", 1) }
+      onClicked: root.host.setIcon(root.targetKey, root.host.iconKeyFor(root.targetKey) || root.host.iconChoices()[0].value)
+    }
+  }
+  WorkspaceDropdown {
+    id: iconDropdown
+    width: parent.width
+    showLabel: false
+    enabled: iconModeRow.custom
+    opacity: enabled ? 1 : 0.4
+    value: root.host.iconKeyFor(root.targetKey) || root.host.iconChoices()[0].value
+    options: root.host.iconChoices()
+    foreground: root.host.foreground
+    fontFamily: root.host.bar ? root.host.bar.fontFamily : Style.font.family
+    hasCursor: root.cursorActive && root.focusSection === "icon-pick"
+    onHovered: function(hovered) { if (hovered) root.setCursor("icon-pick", 0) }
+    onChanged: function(key) { root.host.setIcon(root.targetKey, key) }
   }
   PanelSeparator {
     foreground: root.host.bar ? root.host.bar.foreground : Color.foreground

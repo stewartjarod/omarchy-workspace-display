@@ -110,6 +110,39 @@ var rules = [
   { pattern: "prusaslicer|ultimaker-cura|orcaslicer", icon: "󰐫" }
 ]
 
+// Apps a workspace can show as its own icon. Each glyph is the Material Design
+// icon from the Nerd Font, the same family as the other bar glyphs. An app with
+// `image` shows that file from icons/ in full colour instead.
+var apps = [
+  { key: "gmail", label: "Gmail", match: "^chrome-mail\\.google\\.com", glyph: "󰊫" },
+  { key: "calendar", label: "Google Calendar", match: "^chrome-calendar\\.google\\.com", glyph: "󰃭" },
+  { key: "x", label: "X", match: "^chrome-x\\.com", glyph: "󰕄" },
+  { key: "spotify", label: "Spotify", match: "^spotify$", glyph: "󰓇" },
+  { key: "signal", label: "Signal", match: "^signal$", glyph: "󰍡" },
+  // Work and Play are categories with no window match, so they only ever appear as a workspace icon.
+  { key: "work", label: "Work", glyph: "󰃖" },
+  { key: "play", label: "Play", glyph: "󰊖" },
+  { key: "wraps", label: "Wraps", match: "^chrome-(app\\.)?wraps\\.dev", image: "wraps.png", glyph: "󰏓" }
+]
+
+// The app with this key (as saved on a workspace), or null.
+function appByKey(key) {
+  for (var i = 0; i < apps.length; i++) {
+    if (apps[i].key === key) return apps[i]
+  }
+  return null
+}
+
+// The app whose window class matches, or null. Matching ignores case, like the
+// glyph rules do.
+function appFor(cls) {
+  var value = String(cls || "")
+  for (var i = 0; i < apps.length; i++) {
+    if (apps[i].match && new RegExp(apps[i].match, "i").test(value)) return apps[i]
+  }
+  return null
+}
+
 var fallback = "󰘔"
 var compiled = null
 var cache = {}

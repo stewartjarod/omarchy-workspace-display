@@ -99,7 +99,9 @@ BarWidget {
     item.color = root.cleanColor(item.color)
     item.templates = LayoutModel.cleanTemplates(item.templates)
     item.autoLaunchTemplateId = LayoutModel.cleanAutoLaunchTemplateId(item.autoLaunchTemplateId, item.templates)
+    item.icon = root.cleanIcon(item.icon)
     if (item.style === "app-icon") delete item.style
+    if (item.icon === "") delete item.icon
     if (item.name === "") delete item.name
     if (item.color === "") delete item.color
     if (item.templates.length === 0) delete item.templates
@@ -125,6 +127,25 @@ BarWidget {
   function setColor(key, value) { root.updateEntry(key, { color: value }) }
   function setTemplates(key, value) { root.updateEntry(key, { templates: value }) }
   function setAutoLaunchTemplateId(key, value) { root.updateEntry(key, { autoLaunchTemplateId: value }) }
+  // A workspace's own icon: one of the known apps, or "" to show its windows.
+  function cleanIcon(value) {
+    var app = IconRules.appByKey(value)
+    return app ? app.key : ""
+  }
+  function iconKeyFor(key) { return root.cleanIcon(root.entry(key).icon) }
+  function setIcon(key, value) { root.updateEntry(key, { icon: root.cleanIcon(value) }) }
+  function iconChoices() {
+    return IconRules.apps.map(function(app) { return { value: app.key, label: app.label } })
+  }
+  function customGlyphFor(key) {
+    var app = IconRules.appByKey(root.iconKeyFor(key))
+    return app ? app.glyph : ""
+  }
+  // A full-colour logo file for this workspace's icon, or "" to use the glyph.
+  function customImageFor(key) {
+    var app = IconRules.appByKey(root.iconKeyFor(key))
+    return app && app.image ? Qt.resolvedUrl("icons/" + app.image) : ""
+  }
   function loadMetadata(payload) {
     try {
       var parsed = JSON.parse(payload || "{}"), source = parsed && parsed.workspaces ? parsed.workspaces : {}, next = {}
@@ -246,6 +267,8 @@ BarWidget {
   function windowInitialClass(t) { var ipc = t ? t.lastIpcObject : null; return String((ipc && ipc.initialClass) || (t && t.initialClass) || "") }
   function windowInitialTitle(t) { var ipc = t ? t.lastIpcObject : null; return String((ipc && ipc.initialTitle) || (t && t.initialTitle) || "") }
   function iconFor(t) {
+    var app = IconRules.appFor(root.windowClass(t).toLowerCase())
+    if (app) return app.glyph
     return IconRules.resolve(
       root.windowClass(t).toLowerCase(),
       root.windowTitle(t).toLowerCase(),
@@ -783,8 +806,22 @@ BarWidget {
           Layout.fillWidth: root.vertical
           Layout.alignment: Qt.AlignVCenter
           Row { id: buttonContent; anchors.centerIn: parent; spacing: Style.spaceReal(3)
-            Text { text: root.styleFor(wsId) === "workspace-name" ? root.displayNameFor(wsId) : String(root.deskNumber(wsId)); color: workspaceColor; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: Style.font.body }
-            Repeater { model: root.styleFor(wsId) === "app-icon" && root.workspaceById(wsId) ? root.workspaceById(wsId).toplevels.values : []
+            // A chosen workspace icon replaces the number and the window icons; otherwise the number (or name) shows with each window's icon.
+            Text { visible: root.iconKeyFor(wsId) === ""; text: root.styleFor(wsId) === "workspace-name" ? root.displayNameFor(wsId) : String(root.deskNumber(wsId)); color: workspaceColor; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: Style.font.body }
+            Text {
+              visible: root.iconKeyFor(wsId) !== "" && root.customImageFor(wsId) === ""
+              text: root.customGlyphFor(wsId); color: workspaceColor
+              font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: Style.font.body
+            }
+            // Full-colour app logos are drawn as they are, not tinted.
+            Image {
+              visible: root.iconKeyFor(wsId) !== "" && root.customImageFor(wsId) !== ""
+              source: root.customImageFor(wsId)
+              width: Math.round(Style.font.body * 1.2); height: width
+              smooth: true; mipmap: true
+              fillMode: Image.PreserveAspectFit
+            }
+            Repeater { model: root.styleFor(wsId) === "app-icon" && root.iconKeyFor(wsId) === "" && root.workspaceById(wsId) ? root.workspaceById(wsId).toplevels.values : []
               Text { required property var modelData; text: root.iconFor(modelData); color: workspaceColor; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: Style.font.body }
             }
           }

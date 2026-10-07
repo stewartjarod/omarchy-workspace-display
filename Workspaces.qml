@@ -203,7 +203,8 @@ BarWidget {
     for (var i = 0; i < values.length; i++) if (root.validId(values[i].id)) out.push(values[i].id)
     return out
   }
-  readonly property int activeId: Hyprland.focusedWorkspace ? Hyprland.focusedWorkspace.id : 0
+  // This bar's own monitor's active desktop, so each bar highlights its own.
+  readonly property int activeId: root.hyprMonitor && root.hyprMonitor.activeWorkspace ? root.hyprMonitor.activeWorkspace.id : 0
   readonly property var barWindow: root.QsWindow ? root.QsWindow.window : null
   readonly property string screenName: barWindow && barWindow.screen ? String(barWindow.screen.name || "") : ""
   readonly property var hyprMonitor: {
@@ -211,6 +212,12 @@ BarWidget {
     for (var i = 0; i < monitors.length; i++) if (String(monitors[i].name || "") === root.screenName) return monitors[i]
     return null
   }
+  // Each monitor owns the block of desktop IDs (monitor id + 1) * 100 + desktop
+  // (see ~/.local/bin/desktop). This bar only lists its own block and shows
+  // the desktop number (1, 2, 3...) rather than the raw ID.
+  readonly property int monitorBase: root.hyprMonitor ? (Number(root.hyprMonitor.id) + 1) * 100 : 100
+  function deskNumber(id) { return id - root.monitorBase }
+  function onThisMonitor(id) { return id > root.monitorBase && id < root.monitorBase + 100 }
   readonly property var scratchpadWorkspace: {
     var _ = root.revision, values = Hyprland.workspaces.values
     if (!root.showScratchpad) return null
@@ -224,10 +231,11 @@ BarWidget {
     return !!special && String(special.name || "") === root.scratchpadName
   }
   readonly property var visibleIds: {
-    var _ = root.revision, ids = [1, 2, 3, 4, 5], candidates = root.runtimeIds.concat(root.metadataIds())
+    var _ = root.revision, ids = [1, 2, 3, 4, 5].map(function(n) { return root.monitorBase + n }), candidates = root.runtimeIds.concat(root.metadataIds())
     if (root.validId(root.activeId)) candidates.push(root.activeId)
     for (var i = 0; i < candidates.length; i++) {
       var id = candidates[i]
+      if (!root.onThisMonitor(id)) continue
       if (root.occupied(id) || root.validId(root.activeId) && id === root.activeId || root.metadataIds().indexOf(id) !== -1) if (ids.indexOf(id) === -1) ids.push(id)
     }
     ids.sort(function(a, b) { return a - b }); return ids
@@ -775,7 +783,7 @@ BarWidget {
           Layout.fillWidth: root.vertical
           Layout.alignment: Qt.AlignVCenter
           Row { id: buttonContent; anchors.centerIn: parent; spacing: Style.spaceReal(3)
-            Text { text: root.styleFor(wsId) === "workspace-name" ? root.displayNameFor(wsId) : String(wsId); color: workspaceColor; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: Style.font.body }
+            Text { text: root.styleFor(wsId) === "workspace-name" ? root.displayNameFor(wsId) : String(root.deskNumber(wsId)); color: workspaceColor; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: Style.font.body }
             Repeater { model: root.styleFor(wsId) === "app-icon" && root.workspaceById(wsId) ? root.workspaceById(wsId).toplevels.values : []
               Text { required property var modelData; text: root.iconFor(modelData); color: workspaceColor; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: Style.font.body }
             }

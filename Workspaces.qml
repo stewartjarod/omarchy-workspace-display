@@ -269,12 +269,70 @@ BarWidget {
   function iconFor(t) {
     var app = IconRules.appFor(root.windowClass(t).toLowerCase())
     if (app) return app.glyph
+    // Web apps match on their site, not on the chrome-<host> class, which
+    // would otherwise hit the generic browser rule.
+    var host = root.webHost(t)
+    if (host !== "") return IconRules.webGlyph(host) || IconRules.webFallback
     return IconRules.resolve(
       root.windowClass(t).toLowerCase(),
       root.windowTitle(t).toLowerCase(),
       root.windowInitialClass(t).toLowerCase(),
       root.windowInitialTitle(t).toLowerCase()
     )
+  }
+  function keepsNumber(t) { return IconRules.keepsNumber(root.windowClass(t).toLowerCase(), root.windowInitialClass(t).toLowerCase()) }
+  // app-icon style drops the number when the workspace holds one app that is
+  // not a browser or terminal.
+  function showsNumber(key) {
+    if (root.styleFor(key) === "app-icon") {
+      var ws = root.workspaceForTarget(key), tl = ws && ws.toplevels ? ws.toplevels.values : []
+      if (tl.length === 1 && !root.keepsNumber(tl[0])) return false
+    }
+    return true
+  }
+  // Web apps run as `chromium --app=URL`, with a window class of
+  // chrome-<host>__<path>-<profile>. Their icon is fetched from the site once
+  // (scripts/fetch-favicon.sh) and cached; until it arrives, or if the site has
+  // none, the glyph shows.
+  readonly property string faviconDir: Quickshell.env("HOME") + "/.cache/workspace-display/favicons"
+  readonly property string faviconScript: Quickshell.env("HOME") + "/.config/omarchy/plugins/jarod.workspace-display/scripts/fetch-favicon.sh"
+  property var faviconState: ({})
+  property var faviconQueue: []
+  property string faviconCurrent: ""
+  function webHost(t) {
+    var m = /^chrome-([a-z0-9.-]+)__.*-[^-]*$/i.exec(root.windowClass(t))
+    return m ? m[1].toLowerCase() : ""
+  }
+  function faviconPath(host) { return root.faviconDir + "/" + host + ".png" }
+  function webIconFor(t) {
+    var host = root.webHost(t)
+    // A themed glyph, from a known app or a site rule, beats the favicon.
+    if (host === "" || IconRules.appFor(root.windowClass(t).toLowerCase()) || IconRules.webGlyph(host) !== "") return ""
+    var state = root.faviconState[host]
+    if (state === "ready") return "file://" + root.faviconPath(host)
+    if (state === undefined) Qt.callLater(root.requestFavicon, host)
+    return ""
+  }
+  function requestFavicon(host) {
+    if (root.faviconState[host] !== undefined) return
+    var next = Object.assign({}, root.faviconState); next[host] = "pending"; root.faviconState = next
+    root.faviconQueue = root.faviconQueue.concat([host])
+    root.runNextFavicon()
+  }
+  function runNextFavicon() {
+    if (faviconProcess.running || root.faviconQueue.length === 0) return
+    root.faviconCurrent = root.faviconQueue[0]
+    root.faviconQueue = root.faviconQueue.slice(1)
+    faviconProcess.command = ["bash", root.faviconScript, root.faviconCurrent, root.faviconPath(root.faviconCurrent)]
+    faviconProcess.running = true
+  }
+  Process {
+    id: faviconProcess
+    onExited: function(exitCode) {
+      var next = Object.assign({}, root.faviconState); next[root.faviconCurrent] = exitCode === 0 ? "ready" : "missing"
+      root.faviconState = next
+      root.runNextFavicon()
+    }
   }
   function isFocused(t) { var a = String(t && (t.address || (t.lastIpcObject && t.lastIpcObject.address)) || ""); return a !== "" && a === root.focusedAddress }
   function previewFor(key) {
@@ -807,7 +865,7 @@ BarWidget {
           Layout.alignment: Qt.AlignVCenter
           Row { id: buttonContent; anchors.centerIn: parent; spacing: Style.spaceReal(3)
             // A chosen workspace icon replaces the number and the window icons; otherwise the number (or name) shows with each window's icon.
-            Text { visible: root.iconKeyFor(wsId) === ""; text: root.styleFor(wsId) === "workspace-name" ? root.displayNameFor(wsId) : String(root.deskNumber(wsId)); color: workspaceColor; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: Style.font.body }
+            Text { visible: root.iconKeyFor(wsId) === "" && root.showsNumber(wsId); text: root.styleFor(wsId) === "workspace-name" ? root.displayNameFor(wsId) : String(root.deskNumber(wsId)); color: workspaceColor; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: Style.font.body }
             Text {
               visible: root.iconKeyFor(wsId) !== "" && root.customImageFor(wsId) === ""
               text: root.customGlyphFor(wsId); color: workspaceColor
@@ -822,7 +880,7 @@ BarWidget {
               fillMode: Image.PreserveAspectFit
             }
             Repeater { model: root.styleFor(wsId) === "app-icon" && root.iconKeyFor(wsId) === "" && root.workspaceById(wsId) ? root.workspaceById(wsId).toplevels.values : []
-              Text { required property var modelData; text: root.iconFor(modelData); color: workspaceColor; font.family: root.bar ? root.bar.fontFamily : Style.font.family; font.pixelSize: Style.font.body }
+              WindowIcon { required property var modelData; glyph: root.iconFor(modelData); imageSource: root.webIconFor(modelData); color: workspaceColor; fontFamily: root.bar ? root.bar.fontFamily : Style.font.family; size: Style.font.body }
             }
           }
           MouseArea { anchors.fill: parent; acceptedButtons: Qt.LeftButton | Qt.RightButton; cursorShape: Qt.PointingHandCursor; onClicked: function(mouse) { if (mouse.button === Qt.RightButton) root.openEditor(wsId, parent); else root.focusWorkspace(wsId) } }
@@ -855,12 +913,13 @@ BarWidget {
           Repeater {
             visible: scratchpad.scratchpadStyle !== "workspace-name"
             model: root.scratchpadWorkspace && root.scratchpadWorkspace.toplevels ? root.scratchpadWorkspace.toplevels.values : []
-            Text {
+            WindowIcon {
               required property var modelData
-              text: root.iconFor(modelData)
+              glyph: root.iconFor(modelData)
+              imageSource: root.webIconFor(modelData)
               color: root.isFocused(modelData) ? Color.accent : scratchpad.scratchpadColor
-              font.family: root.bar ? root.bar.fontFamily : Style.font.family
-              font.pixelSize: Style.font.body
+              fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
+              size: Style.font.body
             }
           }
         }

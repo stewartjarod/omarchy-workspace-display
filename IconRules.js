@@ -3,7 +3,15 @@
 // Dynamic Nerd Font glyph lookup adapted from Decent Workspaces / the
 // MIT-licensed saif.workspaces map. Hyprland class is preferred over title:
 // an app keeps its glyph even when its window title describes web content.
-var rules = [
+// Site rules: matched against a web app's host as well as against window
+// class and title, so a site gets a themed glyph when we have one.
+var siteRules = [
+  { pattern: "netflix", icon: "󰝆" },
+  { pattern: "twitch", icon: "󰕃" },
+  { pattern: "plex", icon: "󰚺" },
+  { pattern: "hulu", icon: "󰠩" },
+  { pattern: "disney", icon: "󰄚" },
+  { pattern: "^mail\\.google\\.com", icon: "󰊫" },
   { pattern: "windows", icon: "" },
   { pattern: "ai.opencode.desktop|opencode", icon: "" },
   { pattern: "org.jellyfin.jellyfindesktop|jellyfin", icon: "󰼁" },
@@ -25,7 +33,9 @@ var rules = [
   { pattern: ".*picture-in-picture.*", icon: "󰐹" },
   { pattern: "brave-x.com.*|twitter-x", icon: "󰕄" },
   { pattern: "brave-mail.proton.me.*", icon: "󰊫" },
+]
 
+var rules = siteRules.concat([
   // Browsers
   { pattern: "firefox|org.mozilla.firefox|librewolf|floorp|mercury-browser|cachy-browser", icon: "󰈹" },
   { pattern: "zen", icon: "󰈹" },
@@ -108,7 +118,7 @@ var rules = [
   { pattern: "retroarch|emulator", icon: "󰄭" },
   { pattern: "prismlauncher|minecraft", icon: "󰍳" },
   { pattern: "prusaslicer|ultimaker-cura|orcaslicer", icon: "󰐫" }
-]
+])
 
 // Apps a workspace can show as its own icon. Each glyph is the Material Design
 // icon from the Nerd Font, the same family as the other bar glyphs. An app with
@@ -175,4 +185,35 @@ function resolve(cls, title, initialClass, initialTitle) {
   cache[key] = icon
   cacheCount++
   return icon
+}
+
+// Browsers and terminals keep their workspace number even when they are the
+// only window; every other lone app is shown by its icon alone. Matched on
+// class only, and installed web apps (chrome-<site>-default) do not count as
+// browsers, so they still get their own icon.
+var numberedClasses = new RegExp(
+  "^(firefox|org\\.mozilla\\.firefox|librewolf|floorp|mercury-browser|cachy-browser|zen|zen-browser|waterfox|waterfox-bin|" +
+  "microsoft-edge|brave-browser|brave|tor browser|tor-browser|chromium|thorium|thorium-browser|google-chrome|chrome|vivaldi|vivaldi-stable|qutebrowser|" +
+  "kitty|com\\.mitchellh\\.ghostty|ghostty|org\\.wezfurlong\\.wezterm|wezterm|konsole|foot|footclient|alacritty|xterm|urxvt|st-256color|rio|hyper|blackbox|ptyxis|kgx|" +
+  "org\\.gnome\\.terminal|gnome-terminal|terminator|tilix|org\\.kde\\.konsole)$", "i")
+
+function keepsNumber(cls, initialClass) {
+  return numberedClasses.test(String(cls || "")) || numberedClasses.test(String(initialClass || ""))
+}
+
+// Fallback glyph for a web app with neither a site rule nor a cached favicon.
+var webFallback = "󰖟"
+
+// The themed glyph for a web app's host (e.g. "www.netflix.com"), or "" when we
+// have none and its favicon should be used instead. Only site rules are tried:
+// the general app rules are loose enough to match unrelated hostnames.
+var siteCompiled = null
+function webGlyph(host) {
+  if (!siteCompiled) {
+    siteCompiled = []
+    for (var i = 0; i < siteRules.length; i++) siteCompiled.push({ re: new RegExp(siteRules[i].pattern, "i"), icon: siteRules[i].icon })
+  }
+  var value = String(host || "")
+  for (var j = 0; j < siteCompiled.length; j++) if (siteCompiled[j].re.test(value)) return siteCompiled[j].icon
+  return ""
 }

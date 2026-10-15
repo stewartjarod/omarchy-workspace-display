@@ -10,7 +10,6 @@ var siteRules = [
   { pattern: "twitch", icon: "󰕃" },
   { pattern: "plex", icon: "󰚺" },
   { pattern: "hulu", icon: "󰠩" },
-  { pattern: "disney", icon: "󰄚" },
   { pattern: "^mail\\.google\\.com", icon: "󰊫" },
   { pattern: "windows", icon: "" },
   { pattern: "ai.opencode.desktop|opencode", icon: "" },
@@ -215,5 +214,18 @@ function webGlyph(host) {
   }
   var value = String(host || "")
   for (var j = 0; j < siteCompiled.length; j++) if (siteCompiled[j].re.test(value)) return siteCompiled[j].icon
+  return ""
+}
+
+// Brand logos with no glyph, bundled in icons/ as single-colour SVGs (from the
+// Iconify "cbi" set) and tinted with the bar colour. Tried after the site
+// rules and before the favicon.
+var siteLogos = [
+  { pattern: "disney", file: "disney-plus.svg" }
+]
+
+function webLogo(host) {
+  var value = String(host || "")
+  for (var i = 0; i < siteLogos.length; i++) if (new RegExp(siteLogos[i].pattern, "i").test(value)) return siteLogos[i].file
   return ""
 }

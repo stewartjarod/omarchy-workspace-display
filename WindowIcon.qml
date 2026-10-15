@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Effects
 
 // One window's bar icon: the web app's own icon when a cached image is
 // available, otherwise the Nerd Font glyph.
@@ -9,6 +10,8 @@ Item {
   property color color: "white"
   property string fontFamily: ""
   property real size: 14
+  // Single-colour images (bundled logos) take the bar colour; favicons keep theirs.
+  property bool tinted: false
 
   readonly property bool showImage: imageSource !== "" && img.status === Image.Ready
   implicitWidth: showImage ? img.width : label.implicitWidth
@@ -23,6 +26,11 @@ Item {
     sourceSize.width: width * 2; sourceSize.height: width * 2
     smooth: true; mipmap: true
     fillMode: Image.PreserveAspectFit
+    layer.enabled: icon.tinted
+    layer.effect: MultiEffect {
+      colorization: 1.0
+      colorizationColor: icon.color
+    }
   }
   Text {
     id: label

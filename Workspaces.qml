@@ -308,11 +308,15 @@ BarWidget {
     var host = root.webHost(t)
     // A themed glyph, from a known app or a site rule, beats the favicon.
     if (host === "" || IconRules.appFor(root.windowClass(t).toLowerCase()) || IconRules.webGlyph(host) !== "") return ""
+    var logo = IconRules.webLogo(host)
+    if (logo !== "") return Qt.resolvedUrl("icons/" + logo)
     var state = root.faviconState[host]
     if (state === "ready") return "file://" + root.faviconPath(host)
     if (state === undefined) Qt.callLater(root.requestFavicon, host)
     return ""
   }
+  // Bundled logos are single-colour and follow the bar colour; favicons do not.
+  function webIconTinted(t) { return IconRules.webLogo(root.webHost(t)) !== "" }
   function requestFavicon(host) {
     if (root.faviconState[host] !== undefined) return
     var next = Object.assign({}, root.faviconState); next[host] = "pending"; root.faviconState = next
@@ -880,7 +884,7 @@ BarWidget {
               fillMode: Image.PreserveAspectFit
             }
             Repeater { model: root.styleFor(wsId) === "app-icon" && root.iconKeyFor(wsId) === "" && root.workspaceById(wsId) ? root.workspaceById(wsId).toplevels.values : []
-              WindowIcon { required property var modelData; glyph: root.iconFor(modelData); imageSource: root.webIconFor(modelData); color: workspaceColor; fontFamily: root.bar ? root.bar.fontFamily : Style.font.family; size: Style.font.body }
+              WindowIcon { required property var modelData; glyph: root.iconFor(modelData); imageSource: root.webIconFor(modelData); tinted: root.webIconTinted(modelData); color: workspaceColor; fontFamily: root.bar ? root.bar.fontFamily : Style.font.family; size: Style.font.body }
             }
           }
           MouseArea { anchors.fill: parent; acceptedButtons: Qt.LeftButton | Qt.RightButton; cursorShape: Qt.PointingHandCursor; onClicked: function(mouse) { if (mouse.button === Qt.RightButton) root.openEditor(wsId, parent); else root.focusWorkspace(wsId) } }
@@ -917,6 +921,7 @@ BarWidget {
               required property var modelData
               glyph: root.iconFor(modelData)
               imageSource: root.webIconFor(modelData)
+              tinted: root.webIconTinted(modelData)
               color: root.isFocused(modelData) ? Color.accent : scratchpad.scratchpadColor
               fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
               size: Style.font.body
@@ -1043,6 +1048,11 @@ BarWidget {
       onCommitted: function(hex) {
         root.setColor(root.editedTargetKey, hex)
         root.editorPreviewColor = root.colorFor(root.editedTargetKey)
+      }
+      onCleared: {
+        root.setColor(root.editedTargetKey, "")
+        root.editorPickerOpen = false
+        root.editorPreviewColor = ""
       }
     }
   }

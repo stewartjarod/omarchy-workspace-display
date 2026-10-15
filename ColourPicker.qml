@@ -16,6 +16,7 @@ Column {
   signal previewChanged(string hex)
   signal committed(string hex)
   signal dismissed()
+  signal cleared()
   spacing: Style.space(6)
   width: Style.space(244)
 
@@ -81,6 +82,11 @@ Column {
     }
     else hexField.text = root.currentHex()
     root.hexDirty = false
+  }
+  function clear() {
+    root.colorDirty = false
+    root.hexDirty = false
+    root.cleared()
   }
   function reset(color) {
     root.colorDirty = false
@@ -191,5 +197,16 @@ Column {
         }
       }
     }
+  }
+
+  Button {
+    width: parent.width
+    text: "Use theme color"
+    tooltipText: "Remove the custom color and follow the theme accent"
+    fontFamily: root.fontFamily
+    fontSize: root.fontPixelSize
+    bordered: true
+    focusable: true
+    onClicked: root.clear()
   }
 }

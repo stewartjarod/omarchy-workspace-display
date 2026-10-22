@@ -757,7 +757,14 @@ BarWidget {
     if (ws) ws.activate()
     else if (root.bar) root.bar.run("hyprctl dispatch " + Util.shellQuote('hl.dsp.focus({ workspace = "' + id + '" })'))
   }
-  function targetIsFocused(key) { return root.isScratchpadTarget(key) ? root.scratchpadOpen : root.activeId === Number(key) }
+  // Any monitor, not this bar's: the login queue runs in whichever bar won the
+  // claim, and its targets may be pinned to the other monitor.
+  function workspaceIsActive(id) {
+    var monitors = Hyprland.monitors.values
+    for (var i = 0; i < monitors.length; i++) if (monitors[i].activeWorkspace && monitors[i].activeWorkspace.id === id) return true
+    return false
+  }
+  function targetIsFocused(key) { return root.isScratchpadTarget(key) ? root.scratchpadOpen : root.workspaceIsActive(Number(key)) }
   function focusTarget(key) {
     if (root.isScratchpadTarget(key)) {
       if (!root.scratchpadOpen) root.toggleScratchpad()
